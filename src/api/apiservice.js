@@ -1,6 +1,9 @@
+import config from '../utils/config.js';
+
 class ApiService {
   constructor() {
-    this.baseURL = 'http://localhost:8000/api';
+    this.baseURL = config.api.baseUrl;
+    this.timeout = config.api.timeout;
     this.token = sessionStorage.getItem('authToken');
   }
 
@@ -16,26 +19,73 @@ class ApiService {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
-    const config = {
+    const controller = new AbortController();
+    
+    // Set timeout
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    
+    const requestConfig = {
       headers: {
         'Content-Type': 'application/json',
         ...(this.token && { Authorization: `Bearer ${this.token}` }),
         ...options.headers,
       },
+      signal: controller.signal,
       ...options,
     };
 
     try {
-      const response = await fetch(url, config);
-      const data = await response.json();
+      const response = await fetch(url, requestConfig);
+      clearTimeout(timeoutId);
+      
+      let data;
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = { message: await response.text() };
+      }
 
       if (!response.ok) {
-        throw new Error(data.message || 'API request failed');
+        // Handle different HTTP status codes
+        const error = new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+        error.status = response.status;
+        error.data = data;
+        
+        // Special handling for authentication errors
+        if (response.status === 401) {
+          this.removeAuthToken();
+          error.isAuthError = true;
+        }
+        
+        throw error;
       }
 
       return data;
     } catch (error) {
-      console.error('API Error:', error);
+      clearTimeout(timeoutId);
+      
+      // Handle different types of errors
+      if (error.name === 'AbortError') {
+        const timeoutError = new Error('Request timeout');
+        timeoutError.isTimeout = true;
+        throw timeoutError;
+      }
+      
+      if (!navigator.onLine) {
+        const networkError = new Error('No internet connection');
+        networkError.isNetworkError = true;
+        throw networkError;
+      }
+      
+      console.error('API Error:', {
+        endpoint,
+        error: error.message,
+        status: error.status,
+        timestamp: new Date().toISOString()
+      });
+      
       throw error;
     }
   }

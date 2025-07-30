@@ -8,7 +8,7 @@ import Login from './components/Login';
 import Navigation from './components/Navigation';
 
 // Mock context for development
-const MockAuthContext = React.createContext();
+import { AuthContext } from './auth/AuthContext';
 
 const MockAuthProvider = ({ children }) => {
   const [user] = useState({ username: 'dev_user', token: 'dev_token' });
@@ -22,9 +22,9 @@ const MockAuthProvider = ({ children }) => {
   };
 
   return (
-    <MockAuthContext.Provider value={mockAuthValue}>
+    <AuthContext.Provider value={mockAuthValue}>
       {children}
-    </MockAuthContext.Provider>
+    </AuthContext.Provider>
   );
 };
 
